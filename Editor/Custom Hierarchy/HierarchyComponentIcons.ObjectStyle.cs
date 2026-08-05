@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEngine;
 
 // Module: Per-object style operations.
-// This file exposes the object-facing API for applying, clearing, copying, pasting, and querying
+// This file exposes the object-facing API for applying, clearing, and querying
 // hierarchy style data such as main row color, connection line color, name color, and custom icon.
 // It works with loaded GameObjects and delegates persistence details to HierarchyComponentIcons.Preferences.cs.
 public static partial class HierarchyComponentIcons
@@ -203,64 +203,35 @@ public static partial class HierarchyComponentIcons
         EditorApplication.RepaintHierarchyWindow();
     }
 
-    internal static void ApplyStyleToObjects(
-        HierarchyObjectStyleInfo sourceStyle,
-        IEnumerable<GameObject> gameObjects,
-        bool clearMissingParameters)
+    internal static void ClearIconReferencesToTokens(IEnumerable<string> iconTokens)
     {
-        foreach (GameObject gameObject in gameObjects)
-        {
-            ApplyStyleToObject(gameObject, sourceStyle, clearMissingParameters);
-        }
-
-        EditorApplication.RepaintHierarchyWindow();
-    }
-
-    internal static void ApplyStyleToObject(
-        GameObject gameObject,
-        HierarchyObjectStyleInfo sourceStyle,
-        bool clearMissingParameters)
-    {
-        if (gameObject == null)
+        HashSet<string> iconTokenSet = new HashSet<string>(iconTokens);
+        if (iconTokenSet.Count == 0)
         {
             return;
         }
 
-        if (sourceStyle.HasRowColor)
+        if (iconTokenSet.Contains(SelectedObjectIconName))
         {
-            SetObjectRowColor(gameObject, sourceStyle.RowColor);
-        }
-        else if (clearMissingParameters)
-        {
-            ClearObjectRowColor(gameObject);
+            SelectedObjectIconName = string.Empty;
         }
 
-        if (sourceStyle.HasLineColor)
+        GameObject[] gameObjects = Resources.FindObjectsOfTypeAll<GameObject>();
+        foreach (GameObject gameObject in gameObjects)
         {
-            SetObjectLineColor(gameObject, sourceStyle.LineColor);
-        }
-        else if (clearMissingParameters)
-        {
-            ClearObjectLineColor(gameObject);
+            if (gameObject == null)
+            {
+                continue;
+            }
+
+            if (TryGetObjectIconName(gameObject, out string iconName)
+                && iconTokenSet.Contains(iconName))
+            {
+                ClearObjectIconName(gameObject);
+            }
         }
 
-        if (sourceStyle.HasNameColor)
-        {
-            SetObjectNameColor(gameObject, sourceStyle.NameColor);
-        }
-        else if (clearMissingParameters)
-        {
-            ClearObjectNameColor(gameObject);
-        }
-
-        if (sourceStyle.HasIcon)
-        {
-            SetObjectIconName(gameObject, sourceStyle.IconName);
-        }
-        else if (clearMissingParameters)
-        {
-            ClearObjectIconName(gameObject);
-        }
+        EditorApplication.RepaintHierarchyWindow();
     }
 
     internal static List<HierarchyObjectStyleInfo> GetCustomizedObjectStyles()

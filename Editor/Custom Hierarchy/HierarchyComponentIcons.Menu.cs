@@ -1,13 +1,13 @@
-﻿#if UNITY_EDITOR
+#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
 // Module: Unity menu integration.
-// This file registers Tools and GameObject menu items, keeps menu checkmarks in sync with the current settings,
-// opens management windows, and routes bulk color commands from the menu into the object style API.
-// It does not draw hierarchy rows directly; rendering is handled by HierarchyComponentIcons.Drawing.cs.
+// This file registers the English-only Tools and GameObject menu entries, keeps menu checkmarks in sync
+// with the current settings, opens management windows, and routes bulk color commands into the style API.
+// Unity MenuItem paths must be compile-time constants, so runtime language switching is handled inside windows.
 public static partial class HierarchyComponentIcons
 {
     [MenuItem(ToolsDisplayMenu + "Enabled")]
@@ -19,8 +19,7 @@ public static partial class HierarchyComponentIcons
     [MenuItem(ToolsDisplayMenu + "Enabled", true)]
     private static bool ToggleEnabledValidate()
     {
-        Menu.SetChecked(ToolsDisplayMenu + "Enabled", Enabled);
-        return true;
+        return SetMenuChecked(ToolsDisplayMenu + "Enabled", Enabled);
     }
 
     [MenuItem(ToolsDisplayMenu + "Show Transform Icon")]
@@ -32,8 +31,7 @@ public static partial class HierarchyComponentIcons
     [MenuItem(ToolsDisplayMenu + "Show Transform Icon", true)]
     private static bool ToggleShowTransformValidate()
     {
-        Menu.SetChecked(ToolsDisplayMenu + "Show Transform Icon", ShowTransform);
-        return true;
+        return SetMenuChecked(ToolsDisplayMenu + "Show Transform Icon", ShowTransform);
     }
 
     [MenuItem(ToolsDisplayMenu + "Show Parent Lines")]
@@ -45,8 +43,7 @@ public static partial class HierarchyComponentIcons
     [MenuItem(ToolsDisplayMenu + "Show Parent Lines", true)]
     private static bool ToggleShowHierarchyLinesValidate()
     {
-        Menu.SetChecked(ToolsDisplayMenu + "Show Parent Lines", ShowHierarchyLines);
-        return true;
+        return SetMenuChecked(ToolsDisplayMenu + "Show Parent Lines", ShowHierarchyLines);
     }
 
     [MenuItem(ToolsDisplayMenu + "Show Main Colors")]
@@ -58,8 +55,7 @@ public static partial class HierarchyComponentIcons
     [MenuItem(ToolsDisplayMenu + "Show Main Colors", true)]
     private static bool ToggleShowObjectRowColorsValidate()
     {
-        Menu.SetChecked(ToolsDisplayMenu + "Show Main Colors", ShowObjectRowColors);
-        return true;
+        return SetMenuChecked(ToolsDisplayMenu + "Show Main Colors", ShowObjectRowColors);
     }
 
     [MenuItem(ToolsPaletteMenu + "Open Color Palette")]
@@ -79,10 +75,10 @@ public static partial class HierarchyComponentIcons
     private static void ResetAll()
     {
         if (!EditorUtility.DisplayDialog(
-                "Reset Hierarchy Component Icons",
-                "Reset all settings, colors, object overrides, and close tool windows?",
-                "Reset All",
-                "Cancel"))
+                T("ResetHierarchyComponentIcons"),
+                T("ResetAllSettingsMessage"),
+                T("ResetAll"),
+                T("Cancel")))
         {
             return;
         }
@@ -148,6 +144,11 @@ public static partial class HierarchyComponentIcons
     {
         ClearLineColorFromObjects(GetSelectionAndChildren());
     }
+
+    private static bool SetMenuChecked(string menuPath, bool checkedValue)
+    {
+        Menu.SetChecked(menuPath, checkedValue);
+        return true;
+    }
 }
 #endif
-

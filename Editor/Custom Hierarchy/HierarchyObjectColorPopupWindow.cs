@@ -23,6 +23,7 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
     private const float Padding = 10f;
     private const float SwatchSize = 16f;
     private const float ComponentIconGridHeight = 70f;
+    private const float CustomIconGridHeight = 80f;
     private const float IconGridHeight = 110f;
     private const int SwatchesPerRow = 12;
 
@@ -40,7 +41,9 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
     private bool syncStyleToRelated;
     private Vector2 contentScroll;
     private Vector2 componentIconScroll;
+    private Vector2 customIconScroll;
     private Vector2 iconScroll;
+    private bool watchingExternalFocus;
 
     internal static void Open(GameObject gameObject, Vector2 screenPosition)
     {
@@ -93,10 +96,98 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
 
     private void OnDisable()
     {
+        StopWatchingExternalFocus();
         if (currentWindow == this)
         {
             currentWindow = null;
         }
+    }
+
+    private void OnLostFocus()
+    {
+        EditorApplication.delayCall -= CloseAfterLostFocusIfSafe;
+        EditorApplication.delayCall += CloseAfterLostFocusIfSafe;
+    }
+
+    private void CloseAfterLostFocusIfSafe()
+    {
+        if (this == null || currentWindow != this)
+        {
+            return;
+        }
+
+        if (ShouldKeepOpenForFocusedWindow(EditorWindow.focusedWindow))
+        {
+            StartWatchingExternalFocus();
+            return;
+        }
+
+        Close();
+    }
+
+    private void StartWatchingExternalFocus()
+    {
+        if (watchingExternalFocus)
+        {
+            return;
+        }
+
+        watchingExternalFocus = true;
+        EditorApplication.update += CloseWhenExternalToolFinishes;
+    }
+
+    private void StopWatchingExternalFocus()
+    {
+        if (!watchingExternalFocus)
+        {
+            return;
+        }
+
+        watchingExternalFocus = false;
+        EditorApplication.update -= CloseWhenExternalToolFinishes;
+    }
+
+    private void CloseWhenExternalToolFinishes()
+    {
+        if (this == null || currentWindow != this)
+        {
+            StopWatchingExternalFocus();
+            return;
+        }
+
+        EditorWindow focusedWindow = EditorWindow.focusedWindow;
+        if (focusedWindow == this)
+        {
+            StopWatchingExternalFocus();
+            return;
+        }
+
+        if (ShouldKeepOpenForFocusedWindow(focusedWindow))
+        {
+            return;
+        }
+
+        StopWatchingExternalFocus();
+        Close();
+    }
+
+    private static bool ShouldKeepOpenForFocusedWindow(EditorWindow focusedWindow)
+    {
+        if (focusedWindow == null)
+        {
+            return false;
+        }
+
+        if (focusedWindow is HierarchyObjectColorPopupWindow)
+        {
+            return true;
+        }
+
+        Type focusedType = focusedWindow.GetType();
+        string focusedTypeName = focusedType.Name;
+        string focusedFullName = focusedType.FullName ?? string.Empty;
+        return focusedTypeName.IndexOf("ColorPicker", StringComparison.OrdinalIgnoreCase) >= 0
+            || focusedFullName.IndexOf("ColorPicker", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private void OnGUI()
@@ -124,9 +215,9 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
         GUILayout.Space(6f);
         DrawModuleBox(DrawNameModule);
         DrawModuleBox(DrawIconModule);
-        DrawModuleBox(() => DrawColorPanel("Name Color", PopupColorTarget.Name));
-        DrawModuleBox(() => DrawColorPanel("Main Color", PopupColorTarget.Main));
-        DrawModuleBox(() => DrawColorPanel("Line Color", PopupColorTarget.Line));
+        DrawModuleBox(() => DrawColorPanel("NameColor", PopupColorTarget.Name));
+        DrawModuleBox(() => DrawColorPanel("MainColor", PopupColorTarget.Main));
+        DrawModuleBox(() => DrawColorPanel("LineColor", PopupColorTarget.Line));
         EditorGUILayout.EndScrollView();
         DrawFooter();
         GUILayout.EndArea();
@@ -146,8 +237,8 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
         EditorGUILayout.LabelField(ObjectNames.NicifyVariableName(targetGameObject.name), EditorStyles.boldLabel);
         int relatedCount = relatedObjects.Count;
         string targetText = relatedCount > 1
-            ? relatedCount + " related objects detected"
-            : "This object only";
+            ? HierarchyComponentIcons.Format("RelatedObjectsDetected", relatedCount)
+            : HierarchyComponentIcons.T("ThisObjectOnly");
         EditorGUILayout.LabelField(targetText, EditorStyles.miniLabel);
     }
 
@@ -163,12 +254,12 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
 
     private void DrawNameModule()
     {
-        EditorGUILayout.LabelField("Name", EditorStyles.boldLabel);
-        editedName = EditorGUILayout.TextField("Object Name", editedName);
+        EditorGUILayout.LabelField(HierarchyComponentIcons.T("Name"), EditorStyles.boldLabel);
+        editedName = EditorGUILayout.TextField(HierarchyComponentIcons.T("ObjectName"), editedName);
 
         using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(editedName) || targetGameObject.name == editedName))
         {
-            if (GUILayout.Button("Rename Object"))
+            if (GUILayout.Button(HierarchyComponentIcons.T("RenameObject")))
             {
                 HierarchyComponentIcons.RenameObject(targetGameObject, editedName);
                 Close();
@@ -178,7 +269,7 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
 
     private void DrawIconModule()
     {
-        EditorGUILayout.LabelField("Icon", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField(HierarchyComponentIcons.T("Icon"), EditorStyles.boldLabel);
 
         Texture previewIcon = HierarchyComponentIcons.GetObjectIconTexture(targetGameObject, iconName);
         using (new EditorGUILayout.HorizontalScope())
@@ -188,7 +279,7 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
 
             using (new EditorGUI.DisabledScope(previewIcon == null))
             {
-                if (GUILayout.Button("Apply Icon"))
+                if (GUILayout.Button(HierarchyComponentIcons.T("ApplyIcon")))
                 {
                     ApplyIcon(iconName);
                     Close();
@@ -197,7 +288,7 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
 
             using (new EditorGUI.DisabledScope(!HasStoredIcon()))
             {
-                if (GUILayout.Button("Clear", GUILayout.Width(70f)))
+                if (GUILayout.Button(HierarchyComponentIcons.T("Clear"), GUILayout.Width(70f)))
                 {
                     ClearIcon();
                     Close();
@@ -205,19 +296,49 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
             }
         }
 
-        iconSearch = EditorGUILayout.TextField("Search", iconSearch);
+        if (GUILayout.Button(HierarchyComponentIcons.T("ImportLocalIcon")))
+        {
+            ImportLocalIcon();
+        }
+
+        iconSearch = EditorGUILayout.TextField(HierarchyComponentIcons.T("Search"), iconSearch);
         DrawComponentIconGrid();
+        DrawCustomIconGrid();
         DrawBuiltInIconGrid();
     }
 
-    private void DrawColorPanel(string title, PopupColorTarget colorTarget)
+    private void ImportLocalIcon()
     {
+        string sourcePath = EditorUtility.OpenFilePanel(
+            HierarchyComponentIcons.T("ImportLocalIcon"),
+            Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
+            string.Empty);
+
+        if (string.IsNullOrEmpty(sourcePath))
+        {
+            return;
+        }
+
+        if (!HierarchyComponentIcons.TryImportCustomIconFromFile(sourcePath, out string importedIconToken, out string errorMessage))
+        {
+            EditorUtility.DisplayDialog(HierarchyComponentIcons.T("ImportLocalIcon"), errorMessage, HierarchyComponentIcons.T("OK"));
+            return;
+        }
+
+        iconName = importedIconToken;
+        ApplyIcon(importedIconToken);
+        Close();
+    }
+
+    private void DrawColorPanel(string titleKey, PopupColorTarget colorTarget)
+    {
+        string title = HierarchyComponentIcons.T(titleKey);
         EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
         DrawStoredColorPreview(colorTarget);
 
         EditorGUI.BeginChangeCheck();
         Color editedColor = EditorGUILayout.ColorField(
-            new GUIContent("Color"),
+            new GUIContent(HierarchyComponentIcons.T("Color")),
             GetEditedColor(colorTarget),
             true,
             true,
@@ -230,7 +351,7 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
 
         using (new EditorGUILayout.HorizontalScope())
         {
-            if (GUILayout.Button("Apply " + title))
+            if (GUILayout.Button(HierarchyComponentIcons.Format("ApplyNamedValue", title)))
             {
                 ApplyColor(colorTarget, GetEditedColor(colorTarget));
                 Close();
@@ -238,7 +359,7 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
 
             using (new EditorGUI.DisabledScope(!HasStoredColor(colorTarget)))
             {
-                if (GUILayout.Button("Clear", GUILayout.Width(70f)))
+                if (GUILayout.Button(HierarchyComponentIcons.T("Clear"), GUILayout.Width(70f)))
                 {
                     ClearColor(colorTarget);
                     Close();
@@ -253,7 +374,7 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
     {
         using (new EditorGUILayout.HorizontalScope())
         {
-            EditorGUILayout.LabelField("Current", GUILayout.Width(54f));
+            EditorGUILayout.LabelField(HierarchyComponentIcons.T("Current"), GUILayout.Width(64f));
 
             Rect colorRect = GUILayoutUtility.GetRect(42f, 18f, GUILayout.Width(42f), GUILayout.Height(18f));
             if (TryGetStoredColor(colorTarget, out Color color))
@@ -272,7 +393,7 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
 
     private void DrawBuiltInIconGrid()
     {
-        EditorGUILayout.LabelField("Unity Icons", EditorStyles.miniBoldLabel);
+        EditorGUILayout.LabelField(HierarchyComponentIcons.T("UnityIcons"), EditorStyles.miniBoldLabel);
         iconScroll = EditorGUILayout.BeginScrollView(iconScroll, GUILayout.Height(IconGridHeight));
 
         int rowCount = 0;
@@ -328,6 +449,71 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
         EditorGUILayout.EndScrollView();
     }
 
+    private void DrawCustomIconGrid()
+    {
+        List<string> customIconTokens = HierarchyComponentIcons.GetImportedCustomIconTokens();
+        if (customIconTokens.Count == 0)
+        {
+            return;
+        }
+
+        EditorGUILayout.LabelField(HierarchyComponentIcons.T("ImportedIcons"), EditorStyles.miniBoldLabel);
+        customIconScroll = EditorGUILayout.BeginScrollView(customIconScroll, GUILayout.Height(CustomIconGridHeight));
+
+        int rowCount = 0;
+        bool rowOpen = false;
+        foreach (string customIconToken in customIconTokens)
+        {
+            if (!HierarchyComponentIcons.IsIconSearchMatch(customIconToken, iconSearch))
+            {
+                continue;
+            }
+
+            Texture icon = HierarchyComponentIcons.GetObjectIconTexture(targetGameObject, customIconToken);
+            if (icon == null)
+            {
+                continue;
+            }
+
+            if (!rowOpen)
+            {
+                EditorGUILayout.BeginHorizontal();
+                rowOpen = true;
+            }
+
+            string displayName = HierarchyComponentIcons.GetIconDisplayName(customIconToken);
+            GUIContent iconContent = new GUIContent(icon, displayName);
+            if (GUILayout.Button(iconContent, GUILayout.Width(24f), GUILayout.Height(24f)))
+            {
+                iconName = customIconToken;
+                ApplyIcon(customIconToken);
+                Close();
+            }
+
+            rowCount++;
+            if (rowCount >= SwatchesPerRow)
+            {
+                rowCount = 0;
+                rowOpen = false;
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.EndHorizontal();
+            }
+        }
+
+        if (rowOpen)
+        {
+            GUILayout.FlexibleSpace();
+            EditorGUILayout.EndHorizontal();
+        }
+
+        if (!rowOpen && rowCount == 0)
+        {
+            GUILayout.Space(1f);
+        }
+
+        EditorGUILayout.EndScrollView();
+    }
+
     private void DrawComponentIconGrid()
     {
         List<Component> components = GetComponentsWithIcons();
@@ -336,7 +522,7 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
             return;
         }
 
-        EditorGUILayout.LabelField("Component Icons", EditorStyles.miniBoldLabel);
+        EditorGUILayout.LabelField(HierarchyComponentIcons.T("ComponentIcons"), EditorStyles.miniBoldLabel);
         componentIconScroll = EditorGUILayout.BeginScrollView(componentIconScroll, GUILayout.Height(ComponentIconGridHeight));
 
         int rowCount = 0;
@@ -444,14 +630,14 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
         int relatedCount = relatedObjects.Count;
         using (new EditorGUI.DisabledScope(relatedCount <= 1))
         {
-            syncLineToRelated = EditorGUILayout.Toggle("Sync Line", syncLineToRelated);
-            syncStyleToRelated = EditorGUILayout.Toggle("Sync Colors And Icon", syncStyleToRelated);
+            syncLineToRelated = EditorGUILayout.Toggle(HierarchyComponentIcons.T("SyncLine"), syncLineToRelated);
+            syncStyleToRelated = EditorGUILayout.Toggle(HierarchyComponentIcons.T("SyncColorsAndIcon"), syncStyleToRelated);
         }
     }
 
     private void DrawPresetSwatches(PopupColorTarget colorTarget)
     {
-        EditorGUILayout.LabelField("Presets", EditorStyles.miniBoldLabel);
+        EditorGUILayout.LabelField(HierarchyComponentIcons.T("Presets"), EditorStyles.miniBoldLabel);
 
         Color[] colors = HierarchyComponentIcons.PresetColors;
         for (int i = 0; i < colors.Length; i += SwatchesPerRow)
@@ -624,13 +810,13 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
     {
         using (new EditorGUILayout.HorizontalScope())
         {
-            if (GUILayout.Button("Full Palette"))
+            if (GUILayout.Button(HierarchyComponentIcons.T("FullPalette")))
             {
                 HierarchyComponentIconPaletteWindow.Open();
                 Close();
             }
 
-            if (GUILayout.Button("Close"))
+            if (GUILayout.Button(HierarchyComponentIcons.T("Close")))
             {
                 Close();
             }

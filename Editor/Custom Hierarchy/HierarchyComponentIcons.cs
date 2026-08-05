@@ -37,7 +37,10 @@ public static partial class HierarchyComponentIcons
     private const string SelectedObjectIconNameKey = "HierarchyComponentIcons.SelectedObjectIconName";
     private const string ObjectIconNameKeyPrefix = "HierarchyComponentIcons.ObjectIconName.";
     private const string ObjectColorKeyIndexKey = "HierarchyComponentIcons.ObjectColorKeyIndex";
+    private const string LanguageKey = "HierarchyComponentIcons.Language";
     private const string ComponentIconTokenPrefix = "component:";
+    private const string CustomIconTokenPrefix = "custom:";
+    private const string CustomIconImportFolder = "Assets/Custom Hierarchy Icons";
     private const float IconSize = 16f;
     private const float IconSpacing = 2f;
     private const float RightPadding = 4f;
@@ -177,6 +180,7 @@ public static partial class HierarchyComponentIcons
     {
         EditorApplication.hierarchyWindowItemOnGUI += OnHierarchyWindowItemGUI;
         EditorApplication.delayCall += ClearUnityObjectIconsForStoredHierarchyIcons;
+        EditorApplication.projectChanged += InvalidateLanguageCache;
     }
 
     private static bool Enabled

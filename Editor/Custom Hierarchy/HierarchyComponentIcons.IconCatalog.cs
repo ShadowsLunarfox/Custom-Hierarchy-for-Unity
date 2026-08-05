@@ -1,6 +1,7 @@
 ﻿#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -55,8 +56,111 @@ public static partial class HierarchyComponentIcons
             return GetComponentIconFromToken(gameObject, iconName);
         }
 
+        if (IsCustomIconToken(iconName))
+        {
+            return GetCustomIconFromToken(iconName);
+        }
+
         return GetBuiltInIcon(iconName);
     }
+
+    internal static bool TryImportCustomIconFromFile(string sourcePath, out string iconToken, out string errorMessage)
+    {
+        iconToken = string.Empty;
+        errorMessage = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
+        {
+            errorMessage = "The selected icon file does not exist.";
+            return false;
+        }
+
+        string extension = Path.GetExtension(sourcePath).ToLowerInvariant();
+        if (!IsSupportedCustomIconExtension(extension))
+        {
+            errorMessage = "Please choose a Unity-supported image file: png, jpg, jpeg, tga, psd, or bmp.";
+            return false;
+        }
+
+        EnsureCustomIconImportFolder();
+        string fileName = SanitizeAssetFileName(Path.GetFileNameWithoutExtension(sourcePath));
+        string targetAssetPath = AssetDatabase.GenerateUniqueAssetPath(CustomIconImportFolder + "/" + fileName + extension);
+
+        FileUtil.CopyFileOrDirectory(sourcePath, targetAssetPath);
+        AssetDatabase.ImportAsset(targetAssetPath);
+        ConfigureImportedCustomIcon(targetAssetPath);
+
+        Texture2D importedIcon = AssetDatabase.LoadAssetAtPath<Texture2D>(targetAssetPath);
+        if (importedIcon == null)
+        {
+            AssetDatabase.DeleteAsset(targetAssetPath);
+            errorMessage = "Unity could not import the selected file as a texture.";
+            return false;
+        }
+
+        iconToken = CustomIconTokenPrefix + targetAssetPath;
+        return true;
+    }
+
+    internal static List<string> GetImportedCustomIconTokens()
+    {
+        List<string> iconTokens = new List<string>();
+        if (!AssetDatabase.IsValidFolder(CustomIconImportFolder))
+        {
+            return iconTokens;
+        }
+
+        string[] textureGuids = AssetDatabase.FindAssets("t:Texture2D", new[] { CustomIconImportFolder });
+        foreach (string textureGuid in textureGuids)
+        {
+            string assetPath = AssetDatabase.GUIDToAssetPath(textureGuid);
+            if (!string.IsNullOrEmpty(assetPath))
+            {
+                iconTokens.Add(CustomIconTokenPrefix + assetPath);
+            }
+        }
+
+        iconTokens.Sort((left, right) => string.Compare(
+            GetIconDisplayName(left),
+            GetIconDisplayName(right),
+            StringComparison.OrdinalIgnoreCase));
+
+        return iconTokens;
+    }
+
+    internal static int DeleteImportedCustomIcons(IEnumerable<string> iconTokens)
+    {
+        HashSet<string> assetPaths = new HashSet<string>();
+        foreach (string iconToken in iconTokens)
+        {
+            string assetPath = GetCustomIconAssetPath(iconToken);
+            if (string.IsNullOrEmpty(assetPath)
+                || !assetPath.StartsWith(CustomIconImportFolder + "/", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            assetPaths.Add(assetPath);
+        }
+
+        int deletedCount = 0;
+        foreach (string assetPath in assetPaths)
+        {
+            if (AssetDatabase.DeleteAsset(assetPath))
+            {
+                deletedCount++;
+            }
+        }
+
+        if (deletedCount > 0)
+        {
+            AssetDatabase.Refresh();
+        }
+
+        return deletedCount;
+    }
+
+    internal static string CustomIconFolderPath => CustomIconImportFolder;
 
     internal static string GetComponentIconToken(Component component)
     {
@@ -71,6 +175,12 @@ public static partial class HierarchyComponentIcons
 
     internal static string GetIconDisplayName(string iconName)
     {
+        if (IsCustomIconToken(iconName))
+        {
+            string assetPath = GetCustomIconAssetPath(iconName);
+            return Path.GetFileNameWithoutExtension(assetPath) + " (Custom)";
+        }
+
         if (!IsComponentIconToken(iconName))
         {
             return iconName;
@@ -92,6 +202,93 @@ public static partial class HierarchyComponentIcons
     {
         return !string.IsNullOrWhiteSpace(iconName)
             && iconName.StartsWith(ComponentIconTokenPrefix, StringComparison.Ordinal);
+    }
+
+    private static bool IsCustomIconToken(string iconName)
+    {
+        return !string.IsNullOrWhiteSpace(iconName)
+            && iconName.StartsWith(CustomIconTokenPrefix, StringComparison.Ordinal);
+    }
+
+    private static Texture GetCustomIconFromToken(string iconName)
+    {
+        string assetPath = GetCustomIconAssetPath(iconName);
+        return string.IsNullOrEmpty(assetPath)
+            ? null
+            : AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
+    }
+
+    private static string GetCustomIconAssetPath(string iconName)
+    {
+        return IsCustomIconToken(iconName)
+            ? iconName.Substring(CustomIconTokenPrefix.Length)
+            : string.Empty;
+    }
+
+    private static bool IsSupportedCustomIconExtension(string extension)
+    {
+        switch (extension)
+        {
+            case ".png":
+            case ".jpg":
+            case ".jpeg":
+            case ".tga":
+            case ".psd":
+            case ".bmp":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static string SanitizeAssetFileName(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return "CustomHierarchyIcon";
+        }
+
+        foreach (char invalidChar in Path.GetInvalidFileNameChars())
+        {
+            fileName = fileName.Replace(invalidChar, '_');
+        }
+
+        return string.IsNullOrWhiteSpace(fileName) ? "CustomHierarchyIcon" : fileName.Trim();
+    }
+
+    private static void EnsureCustomIconImportFolder()
+    {
+        if (AssetDatabase.IsValidFolder(CustomIconImportFolder))
+        {
+            return;
+        }
+
+        string[] folderParts = CustomIconImportFolder.Split('/');
+        string currentPath = folderParts[0];
+        for (int i = 1; i < folderParts.Length; i++)
+        {
+            string nextPath = currentPath + "/" + folderParts[i];
+            if (!AssetDatabase.IsValidFolder(nextPath))
+            {
+                AssetDatabase.CreateFolder(currentPath, folderParts[i]);
+            }
+
+            currentPath = nextPath;
+        }
+    }
+
+    private static void ConfigureImportedCustomIcon(string assetPath)
+    {
+        TextureImporter importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
+        if (importer == null)
+        {
+            return;
+        }
+
+        importer.textureType = TextureImporterType.Default;
+        importer.alphaIsTransparency = true;
+        importer.mipmapEnabled = false;
+        importer.SaveAndReimport();
     }
 
     private static Texture GetIconContentTextureSilently(string iconName)
