@@ -5,6 +5,10 @@ using UnityEditor;
 using UnityEngine;
 
 
+// Module: Quick per-object hierarchy style popup.
+// This popup opens from hierarchy/object shortcuts and focuses on editing one target object at a time,
+// with optional synchronization to related selected objects. It supports renaming, name color, main row color,
+// connection line color, component icons, Unity built-in icons, and quick links back to the full palette.
 internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
 {
     private enum PopupColorTarget

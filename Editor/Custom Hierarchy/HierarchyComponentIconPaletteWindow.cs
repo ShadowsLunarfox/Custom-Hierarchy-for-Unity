@@ -5,6 +5,10 @@ using UnityEditor;
 using UnityEngine;
 
 
+// Module: Main hierarchy style management palette.
+// This EditorWindow provides global line color controls, selected-object batch editing, a searchable list
+// of changed objects, copy/paste style workflows, stale record cleanup, and scrollable UI for smaller screens.
+// It calls the shared HierarchyComponentIcons APIs instead of reading or writing EditorPrefs directly.
 internal sealed class HierarchyComponentIconPaletteWindow : EditorWindow
 {
     private const int SwatchesPerRow = 9;

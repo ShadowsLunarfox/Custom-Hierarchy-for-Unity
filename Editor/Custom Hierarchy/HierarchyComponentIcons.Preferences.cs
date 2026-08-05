@@ -4,6 +4,10 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
+// Module: EditorPrefs persistence and cleanup.
+// This file stores per-object style values, tracks all generated preference keys, removes stale records,
+// clears Unity object icons when needed, and provides helper routines for building or pruning stored keys.
+// It intentionally keeps storage mechanics separate from drawing and user-interface code.
 public static partial class HierarchyComponentIcons
 {
     private static void SetObjectRowColor(GameObject gameObject, Color color)

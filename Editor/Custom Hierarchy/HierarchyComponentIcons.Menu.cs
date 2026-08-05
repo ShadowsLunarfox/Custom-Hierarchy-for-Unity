@@ -4,6 +4,10 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
+// Module: Unity menu integration.
+// This file registers Tools and GameObject menu items, keeps menu checkmarks in sync with the current settings,
+// opens management windows, and routes bulk color commands from the menu into the object style API.
+// It does not draw hierarchy rows directly; rendering is handled by HierarchyComponentIcons.Drawing.cs.
 public static partial class HierarchyComponentIcons
 {
     [MenuItem(ToolsDisplayMenu + "Enabled")]

@@ -4,6 +4,10 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
+// Module: Hierarchy window rendering.
+// This file handles per-row GUI drawing in Unity's Hierarchy window, including component icons,
+// custom object icons, name color overlays, row color stripes, and parent-child connection lines.
+// It also owns the geometry helpers used to position labels, icons, and connector lines.
 public static partial class HierarchyComponentIcons
 {
     private static void OnHierarchyWindowItemGUI(int instanceId, Rect selectionRect)

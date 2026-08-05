@@ -4,6 +4,10 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
+// Module: Per-object style operations.
+// This file exposes the object-facing API for applying, clearing, copying, pasting, and querying
+// hierarchy style data such as main row color, connection line color, name color, and custom icon.
+// It works with loaded GameObjects and delegates persistence details to HierarchyComponentIcons.Preferences.cs.
 public static partial class HierarchyComponentIcons
 {
     internal struct HierarchyObjectStyleInfo

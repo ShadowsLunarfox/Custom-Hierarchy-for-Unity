@@ -4,6 +4,10 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
+// Module: Core entry point for the hierarchy customization tool.
+// This file owns shared constants, EditorPrefs-backed display settings, color presets, icon name presets,
+// and InitializeOnLoad registration for hierarchy row drawing. Behavior-heavy features live in the
+// partial files beside this one so this file stays focused on configuration and bootstrapping.
 /// <summary>
 /// Draws the icons for components attached to each GameObject in the Hierarchy.
 /// </summary>
