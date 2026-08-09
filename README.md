@@ -20,3 +20,14 @@ Custom Hierarchy is a Unity Editor extension for improving the Hierarchy window.
 - Scroll the palette window when the UI does not fit on screen.
 - Reset or clear custom settings when needed.
 
+## install instruction
+how to install download the unity package and input to your project
+
+## how to use
+how to use select a object press Alt key on your keyboard it will have a pop-up windows and you can change the icon and the color and press okay or apply
+
+## image preview
+
+<img src="img/Screenshot 2026-08-08 012830.png" >
+
+<img src="img/Screenshot 2026-08-08 012841.png" >
