@@ -37,6 +37,10 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
     private Color nameColor;
     private Color mainColor;
     private Color lineColor;
+    private bool useNameColor;
+    private bool useMainColor;
+    private bool useLineColor;
+    private bool useIcon;
     private bool syncLineToRelated;
     private bool syncStyleToRelated;
     private Vector2 contentScroll;
@@ -55,21 +59,22 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
         HierarchyObjectColorPopupWindow window = CreateInstance<HierarchyObjectColorPopupWindow>();
         window.targetGameObject = gameObject;
         window.relatedObjects = HierarchyComponentIcons.GetRelatedObjects(gameObject);
+        bool targetIsPartOfMultiSelection = Selection.gameObjects.Length > 1
+            && Array.IndexOf(Selection.gameObjects, gameObject) >= 0;
         window.syncLineToRelated = window.relatedObjects.Count > 1;
-        window.syncStyleToRelated = false;
+        window.syncStyleToRelated = targetIsPartOfMultiSelection;
         window.editedName = gameObject.name;
-        window.nameColor = HierarchyComponentIcons.TryGetObjectNameColor(gameObject, out Color textColor)
-            ? textColor
-            : HierarchyComponentIcons.SelectedObjectNameColor;
-        window.mainColor = HierarchyComponentIcons.TryGetObjectRowColor(gameObject, out Color rowColor)
-            ? rowColor
-            : HierarchyComponentIcons.SelectedObjectRowColor;
-        window.lineColor = HierarchyComponentIcons.TryGetObjectLineColor(gameObject, out Color connectorColor)
-            ? connectorColor
-            : HierarchyComponentIcons.SelectedObjectLineColor;
-        window.iconName = HierarchyComponentIcons.TryGetObjectIconName(gameObject, out string storedIconName)
-            ? storedIconName
-            : HierarchyComponentIcons.SelectedObjectIconName;
+        window.useNameColor = HierarchyComponentIcons.TryGetObjectNameColor(gameObject, out Color textColor);
+        window.nameColor = window.useNameColor ? textColor : GetDefaultNameColor();
+        window.useNameColor = true;
+        window.useMainColor = HierarchyComponentIcons.TryGetObjectRowColor(gameObject, out Color rowColor);
+        window.mainColor = window.useMainColor ? rowColor : GetDefaultMainColor();
+        window.useMainColor = true;
+        window.useLineColor = HierarchyComponentIcons.TryGetObjectLineColor(gameObject, out Color connectorColor);
+        window.lineColor = window.useLineColor ? connectorColor : GetDefaultLineColor();
+        window.useLineColor = true;
+        window.useIcon = HierarchyComponentIcons.TryGetObjectIconName(gameObject, out string storedIconName);
+        window.iconName = window.useIcon ? storedIconName : HierarchyComponentIcons.SelectedObjectIconName;
         if (HierarchyComponentIcons.GetObjectIconTexture(gameObject, window.iconName) == null)
         {
             window.iconName = "GameObject Icon";
@@ -78,6 +83,27 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
         window.position = new Rect(screenPosition.x, screenPosition.y, Width, Height);
         window.ShowPopup();
         window.Focus();
+    }
+
+    private static Color GetDefaultMainColor()
+    {
+        return HierarchyComponentIcons.UseCustomDefaultObjectColors
+            ? HierarchyComponentIcons.SelectedObjectRowColor
+            : HierarchyComponentIcons.CreateRandomDefaultColor();
+    }
+
+    private static Color GetDefaultNameColor()
+    {
+        return HierarchyComponentIcons.UseCustomDefaultObjectColors
+            ? HierarchyComponentIcons.SelectedObjectNameColor
+            : HierarchyComponentIcons.CreateRandomDefaultColor();
+    }
+
+    private static Color GetDefaultLineColor()
+    {
+        return HierarchyComponentIcons.UseCustomDefaultObjectColors
+            ? HierarchyComponentIcons.SelectedObjectLineColor
+            : HierarchyComponentIcons.CreateRandomDefaultColor();
     }
 
     internal static void CloseAllOpenWindows()
@@ -257,14 +283,10 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
         EditorGUILayout.LabelField(HierarchyComponentIcons.T("Name"), EditorStyles.boldLabel);
         editedName = EditorGUILayout.TextField(HierarchyComponentIcons.T("ObjectName"), editedName);
 
-        using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(editedName) || targetGameObject.name == editedName))
-        {
-            if (GUILayout.Button(HierarchyComponentIcons.T("RenameObject")))
-            {
-                HierarchyComponentIcons.RenameObject(targetGameObject, editedName);
-                Close();
-            }
-        }
+        EditorGUILayout.LabelField(targetGameObject.name == editedName
+            ? HierarchyComponentIcons.T("Current")
+            : "Pending rename",
+            EditorStyles.miniLabel);
     }
 
     private void DrawIconModule()
@@ -277,21 +299,13 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
             Rect previewRect = GUILayoutUtility.GetRect(24f, 24f, GUILayout.Width(24f), GUILayout.Height(24f));
             DrawIconPreview(previewRect, previewIcon);
 
-            using (new EditorGUI.DisabledScope(previewIcon == null))
-            {
-                if (GUILayout.Button(HierarchyComponentIcons.T("ApplyIcon")))
-                {
-                    ApplyIcon(iconName);
-                    Close();
-                }
-            }
+            useIcon = EditorGUILayout.Toggle("Use Icon", useIcon);
 
-            using (new EditorGUI.DisabledScope(!HasStoredIcon()))
+            using (new EditorGUI.DisabledScope(!useIcon && !HasStoredIcon()))
             {
                 if (GUILayout.Button(HierarchyComponentIcons.T("Clear"), GUILayout.Width(70f)))
                 {
-                    ClearIcon();
-                    Close();
+                    useIcon = false;
                 }
             }
         }
@@ -326,14 +340,14 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
         }
 
         iconName = importedIconToken;
-        ApplyIcon(importedIconToken);
-        Close();
+        useIcon = true;
     }
 
     private void DrawColorPanel(string titleKey, PopupColorTarget colorTarget)
     {
         string title = HierarchyComponentIcons.T(titleKey);
         EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
+        SetUseColor(colorTarget, EditorGUILayout.Toggle(HierarchyComponentIcons.T("UseCustomColor"), GetUseColor(colorTarget)));
         DrawStoredColorPreview(colorTarget);
 
         EditorGUI.BeginChangeCheck();
@@ -347,22 +361,16 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
         if (EditorGUI.EndChangeCheck())
         {
             SetEditedColor(colorTarget, editedColor);
+            SetUseColor(colorTarget, true);
         }
 
         using (new EditorGUILayout.HorizontalScope())
         {
-            if (GUILayout.Button(HierarchyComponentIcons.Format("ApplyNamedValue", title)))
+            using (new EditorGUI.DisabledScope(!GetUseColor(colorTarget) && !HasStoredColor(colorTarget)))
             {
-                ApplyColor(colorTarget, GetEditedColor(colorTarget));
-                Close();
-            }
-
-            using (new EditorGUI.DisabledScope(!HasStoredColor(colorTarget)))
-            {
-                if (GUILayout.Button(HierarchyComponentIcons.T("Clear"), GUILayout.Width(70f)))
+                if (GUILayout.Button(HierarchyComponentIcons.T("Clear")))
                 {
-                    ClearColor(colorTarget);
-                    Close();
+                    SetUseColor(colorTarget, false);
                 }
             }
         }
@@ -421,8 +429,7 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
             if (GUILayout.Button(iconContent, GUILayout.Width(24f), GUILayout.Height(24f)))
             {
                 iconName = builtInIconName;
-                ApplyIcon(builtInIconName);
-                Close();
+                useIcon = true;
             }
 
             rowCount++;
@@ -486,8 +493,7 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
             if (GUILayout.Button(iconContent, GUILayout.Width(24f), GUILayout.Height(24f)))
             {
                 iconName = customIconToken;
-                ApplyIcon(customIconToken);
-                Close();
+                useIcon = true;
             }
 
             rowCount++;
@@ -553,8 +559,7 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
             if (GUILayout.Button(iconContent, GUILayout.Width(24f), GUILayout.Height(24f)))
             {
                 iconName = componentIconToken;
-                ApplyIcon(componentIconToken);
-                Close();
+                useIcon = true;
             }
 
             rowCount++;
@@ -654,8 +659,7 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
                     if (GUI.Button(swatchRect, GUIContent.none, GUIStyle.none))
                     {
                         SetEditedColor(colorTarget, color);
-                        ApplyColor(colorTarget, color);
-                        Close();
+                        SetUseColor(colorTarget, true);
                     }
                 }
 
@@ -686,6 +690,32 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
                 break;
             case PopupColorTarget.Line:
                 lineColor = color;
+                break;
+        }
+    }
+
+    private bool GetUseColor(PopupColorTarget colorTarget)
+    {
+        return colorTarget switch
+        {
+            PopupColorTarget.Name => useNameColor,
+            PopupColorTarget.Main => useMainColor,
+            _ => useLineColor
+        };
+    }
+
+    private void SetUseColor(PopupColorTarget colorTarget, bool useColor)
+    {
+        switch (colorTarget)
+        {
+            case PopupColorTarget.Name:
+                useNameColor = useColor;
+                break;
+            case PopupColorTarget.Main:
+                useMainColor = useColor;
+                break;
+            case PopupColorTarget.Line:
+                useLineColor = useColor;
                 break;
         }
     }
@@ -810,6 +840,12 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
     {
         using (new EditorGUILayout.HorizontalScope())
         {
+            if (GUILayout.Button("Apply All"))
+            {
+                ApplyAllChanges();
+                Close();
+            }
+
             if (GUILayout.Button(HierarchyComponentIcons.T("FullPalette")))
             {
                 HierarchyComponentIconPaletteWindow.Open();
@@ -821,6 +857,38 @@ internal sealed class HierarchyObjectColorPopupWindow : EditorWindow
                 Close();
             }
         }
+    }
+
+    private void ApplyAllChanges()
+    {
+        if (!string.IsNullOrWhiteSpace(editedName) && targetGameObject.name != editedName)
+        {
+            HierarchyComponentIcons.RenameObject(targetGameObject, editedName);
+        }
+
+        ApplyOrClearColor(PopupColorTarget.Name, useNameColor, nameColor);
+        ApplyOrClearColor(PopupColorTarget.Main, useMainColor, mainColor);
+        ApplyOrClearColor(PopupColorTarget.Line, useLineColor, lineColor);
+
+        if (useIcon)
+        {
+            ApplyIcon(iconName);
+        }
+        else
+        {
+            ClearIcon();
+        }
+    }
+
+    private void ApplyOrClearColor(PopupColorTarget colorTarget, bool useColor, Color color)
+    {
+        if (useColor)
+        {
+            ApplyColor(colorTarget, color);
+            return;
+        }
+
+        ClearColor(colorTarget);
     }
 }
 #endif

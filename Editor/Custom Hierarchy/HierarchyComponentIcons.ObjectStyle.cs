@@ -231,6 +231,7 @@ public static partial class HierarchyComponentIcons
             }
         }
 
+        ClearStoredIconReferencesToTokens(iconTokenSet);
         EditorApplication.RepaintHierarchyWindow();
     }
 
@@ -347,7 +348,7 @@ public static partial class HierarchyComponentIcons
             return false;
         }
 
-        string storedColor = EditorPrefs.GetString(key, string.Empty);
+        string storedColor = GetProjectString(key, string.Empty);
         if (!string.IsNullOrEmpty(storedColor) && ColorUtility.TryParseHtmlString("#" + storedColor, out color))
         {
             return true;
@@ -366,7 +367,7 @@ public static partial class HierarchyComponentIcons
             return false;
         }
 
-        string storedColor = EditorPrefs.GetString(key, string.Empty);
+        string storedColor = GetProjectString(key, string.Empty);
         if (!string.IsNullOrEmpty(storedColor) && ColorUtility.TryParseHtmlString("#" + storedColor, out color))
         {
             return true;
@@ -385,7 +386,7 @@ public static partial class HierarchyComponentIcons
             return false;
         }
 
-        string storedColor = EditorPrefs.GetString(key, string.Empty);
+        string storedColor = GetProjectString(key, string.Empty);
         if (!string.IsNullOrEmpty(storedColor) && ColorUtility.TryParseHtmlString("#" + storedColor, out color))
         {
             return true;
@@ -404,7 +405,7 @@ public static partial class HierarchyComponentIcons
             return false;
         }
 
-        iconName = EditorPrefs.GetString(key, string.Empty);
+        iconName = GetProjectString(key, string.Empty);
         return !string.IsNullOrWhiteSpace(iconName);
     }
 }

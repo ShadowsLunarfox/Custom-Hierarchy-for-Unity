@@ -269,7 +269,7 @@ public static partial class HierarchyComponentIcons
 
     private static Color GetStoredColor(string key, Color fallback)
     {
-        string storedColor = EditorPrefs.GetString(key, string.Empty);
+        string storedColor = GetProjectString(key, string.Empty);
         if (!string.IsNullOrEmpty(storedColor) && ColorUtility.TryParseHtmlString("#" + storedColor, out Color color))
         {
             return color;

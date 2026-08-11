@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEngine;
 
 // Module: Core entry point for the hierarchy customization tool.
-// This file owns shared constants, EditorPrefs-backed display settings, color presets, icon name presets,
+// This file owns shared constants, project-backed display settings, color presets, icon name presets,
 // and InitializeOnLoad registration for hierarchy row drawing. Behavior-heavy features live in the
 // partial files beside this one so this file stays focused on configuration and bootstrapping.
 /// <summary>
@@ -28,6 +28,7 @@ public static partial class HierarchyComponentIcons
     private const string ShowObjectRowColorsKey = "HierarchyComponentIcons.ShowObjectRowColors";
     private const string UseCustomHierarchyLineColorKey = "HierarchyComponentIcons.UseCustomHierarchyLineColor";
     private const string HierarchyLineColorKey = "HierarchyComponentIcons.HierarchyLineColor";
+    private const string UseCustomDefaultObjectColorsKey = "HierarchyComponentIcons.UseCustomDefaultObjectColors";
     private const string SelectedObjectRowColorKey = "HierarchyComponentIcons.SelectedObjectRowColor";
     private const string ObjectRowColorKeyPrefix = "HierarchyComponentIcons.ObjectRowColor.";
     private const string SelectedObjectLineColorKey = "HierarchyComponentIcons.SelectedObjectLineColor";
@@ -40,7 +41,7 @@ public static partial class HierarchyComponentIcons
     private const string LanguageKey = "HierarchyComponentIcons.Language";
     private const string ComponentIconTokenPrefix = "component:";
     private const string CustomIconTokenPrefix = "custom:";
-    private const string CustomIconImportFolder = "Assets/Custom Hierarchy Icons";
+    private const string CustomIconImportFolder = "Assets/Editor/Custom Hierarchy/Custom Icons";
     private const float IconSize = 16f;
     private const float IconSpacing = 2f;
     private const float RightPadding = 4f;
@@ -181,54 +182,57 @@ public static partial class HierarchyComponentIcons
         EditorApplication.hierarchyWindowItemOnGUI += OnHierarchyWindowItemGUI;
         EditorApplication.delayCall += ClearUnityObjectIconsForStoredHierarchyIcons;
         EditorApplication.projectChanged += InvalidateLanguageCache;
+        EditorApplication.quitting += SaveProjectSettingsIfDirty;
+        AssemblyReloadEvents.beforeAssemblyReload += SaveProjectSettingsIfDirty;
+        UnityEditor.SceneManagement.EditorSceneManager.sceneClosing += SaveProjectSettingsOnSceneClosing;
     }
 
     private static bool Enabled
     {
-        get => EditorPrefs.GetBool(EnabledKey, true);
+        get => GetProjectBool(EnabledKey, true);
         set
         {
-            EditorPrefs.SetBool(EnabledKey, value);
+            SetProjectBool(EnabledKey, value);
             EditorApplication.RepaintHierarchyWindow();
         }
     }
 
     private static bool ShowTransform
     {
-        get => EditorPrefs.GetBool(ShowTransformKey, false);
+        get => GetProjectBool(ShowTransformKey, false);
         set
         {
-            EditorPrefs.SetBool(ShowTransformKey, value);
+            SetProjectBool(ShowTransformKey, value);
             EditorApplication.RepaintHierarchyWindow();
         }
     }
 
     internal static bool ShowHierarchyLines
     {
-        get => EditorPrefs.GetBool(ShowHierarchyLinesKey, true);
+        get => GetProjectBool(ShowHierarchyLinesKey, true);
         set
         {
-            EditorPrefs.SetBool(ShowHierarchyLinesKey, value);
+            SetProjectBool(ShowHierarchyLinesKey, value);
             EditorApplication.RepaintHierarchyWindow();
         }
     }
 
     internal static bool ShowObjectRowColors
     {
-        get => EditorPrefs.GetBool(ShowObjectRowColorsKey, true);
+        get => GetProjectBool(ShowObjectRowColorsKey, true);
         set
         {
-            EditorPrefs.SetBool(ShowObjectRowColorsKey, value);
+            SetProjectBool(ShowObjectRowColorsKey, value);
             EditorApplication.RepaintHierarchyWindow();
         }
     }
 
     internal static bool UseCustomHierarchyLineColor
     {
-        get => EditorPrefs.GetBool(UseCustomHierarchyLineColorKey, false);
+        get => GetProjectBool(UseCustomHierarchyLineColorKey, false);
         set
         {
-            EditorPrefs.SetBool(UseCustomHierarchyLineColorKey, value);
+            SetProjectBool(UseCustomHierarchyLineColorKey, value);
             EditorApplication.RepaintHierarchyWindow();
         }
     }
@@ -238,14 +242,34 @@ public static partial class HierarchyComponentIcons
         get => GetStoredColor(HierarchyLineColorKey, DefaultHierarchyLineColor);
         set
         {
-            EditorPrefs.SetString(HierarchyLineColorKey, ColorUtility.ToHtmlStringRGBA(value));
+            SetProjectString(HierarchyLineColorKey, ColorUtility.ToHtmlStringRGBA(value));
             EditorApplication.RepaintHierarchyWindow();
         }
     }
 
-    internal static Color DefaultHierarchyLineColor => EditorGUIUtility.isProSkin
-        ? new Color(1f, 1f, 1f, 0.22f)
-        : new Color(0f, 0f, 0f, 0.2f);
+    internal static Color DefaultColor => Color.white;
+
+    internal static Color DefaultHierarchyLineColor => DefaultColor;
+
+    internal static bool UseCustomDefaultObjectColors
+    {
+        get => GetProjectBool(UseCustomDefaultObjectColorsKey, false);
+        set
+        {
+            SetProjectBool(UseCustomDefaultObjectColorsKey, value);
+            EditorApplication.RepaintHierarchyWindow();
+        }
+    }
+
+    internal static Color CreateRandomDefaultColor()
+    {
+        Color color = Color.HSVToRGB(
+            UnityEngine.Random.Range(0f, 1f),
+            UnityEngine.Random.Range(0.55f, 0.9f),
+            UnityEngine.Random.Range(0.75f, 1f));
+        color.a = 1f;
+        return color;
+    }
 
     internal static Color ActiveHierarchyLineColor => UseCustomHierarchyLineColor
         ? HierarchyLineColor
@@ -253,30 +277,30 @@ public static partial class HierarchyComponentIcons
 
     internal static Color SelectedObjectRowColor
     {
-        get => GetStoredColor(SelectedObjectRowColorKey, new Color(0.25f, 0.55f, 1f, 0.42f));
+        get => GetStoredColor(SelectedObjectRowColorKey, DefaultColor);
         set
         {
-            EditorPrefs.SetString(SelectedObjectRowColorKey, ColorUtility.ToHtmlStringRGBA(value));
+            SetProjectString(SelectedObjectRowColorKey, ColorUtility.ToHtmlStringRGBA(value));
             EditorApplication.RepaintHierarchyWindow();
         }
     }
 
     internal static Color SelectedObjectLineColor
     {
-        get => GetStoredColor(SelectedObjectLineColorKey, new Color(0.25f, 0.55f, 1f, 0.55f));
+        get => GetStoredColor(SelectedObjectLineColorKey, DefaultColor);
         set
         {
-            EditorPrefs.SetString(SelectedObjectLineColorKey, ColorUtility.ToHtmlStringRGBA(value));
+            SetProjectString(SelectedObjectLineColorKey, ColorUtility.ToHtmlStringRGBA(value));
             EditorApplication.RepaintHierarchyWindow();
         }
     }
 
     internal static Color SelectedObjectNameColor
     {
-        get => GetStoredColor(SelectedObjectNameColorKey, EditorStyles.label.normal.textColor);
+        get => GetStoredColor(SelectedObjectNameColorKey, DefaultColor);
         set
         {
-            EditorPrefs.SetString(SelectedObjectNameColorKey, ColorUtility.ToHtmlStringRGBA(value));
+            SetProjectString(SelectedObjectNameColorKey, ColorUtility.ToHtmlStringRGBA(value));
             EditorApplication.RepaintHierarchyWindow();
         }
     }
@@ -285,16 +309,16 @@ public static partial class HierarchyComponentIcons
 
     internal static string SelectedObjectIconName
     {
-        get => EditorPrefs.GetString(SelectedObjectIconNameKey, "GameObject Icon");
+        get => GetProjectString(SelectedObjectIconNameKey, "GameObject Icon");
         set
         {
             if (string.IsNullOrWhiteSpace(value))
             {
-                EditorPrefs.DeleteKey(SelectedObjectIconNameKey);
+                DeleteProjectKey(SelectedObjectIconNameKey);
                 return;
             }
 
-            EditorPrefs.SetString(SelectedObjectIconNameKey, value.Trim());
+            SetProjectString(SelectedObjectIconNameKey, value.Trim());
         }
     }
 

@@ -8,7 +8,7 @@ using UnityEngine;
 // Module: Icon lookup and icon token handling.
 // This file resolves Unity built-in icon names, applies version-compatible fallbacks for renamed icons,
 // suppresses noisy missing-icon console messages, and converts component references into persistent
-// component icon tokens that can be stored in EditorPrefs and resolved later.
+// component icon tokens that can be stored in project settings and resolved later.
 public static partial class HierarchyComponentIcons
 {
     internal static Texture GetBuiltInIcon(string iconName)

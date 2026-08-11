@@ -36,7 +36,7 @@ public static partial class HierarchyComponentIcons
                 value = HierarchyComponentIconLanguage.Auto;
             }
 
-            EditorPrefs.SetInt(LanguageKey, (int)value);
+            SetProjectInt(LanguageKey, (int)value);
             cachedSelectedLanguage = value;
             cachedActiveLanguage = value == HierarchyComponentIconLanguage.Auto
                 ? DetectEditorLanguage()
@@ -119,16 +119,16 @@ public static partial class HierarchyComponentIcons
             return;
         }
 
-        cachedSelectedLanguage = ReadSelectedLanguageFromPrefs();
+        cachedSelectedLanguage = ReadSelectedLanguageFromProjectSettings();
         cachedActiveLanguage = cachedSelectedLanguage == HierarchyComponentIconLanguage.Auto
             ? DetectEditorLanguage()
             : cachedSelectedLanguage;
         languageCacheValid = true;
     }
 
-    private static HierarchyComponentIconLanguage ReadSelectedLanguageFromPrefs()
+    private static HierarchyComponentIconLanguage ReadSelectedLanguageFromProjectSettings()
     {
-        int storedValue = EditorPrefs.GetInt(LanguageKey, (int)HierarchyComponentIconLanguage.Auto);
+        int storedValue = GetProjectInt(LanguageKey, (int)HierarchyComponentIconLanguage.Auto);
         if (!Enum.IsDefined(typeof(HierarchyComponentIconLanguage), storedValue))
         {
             return HierarchyComponentIconLanguage.Auto;

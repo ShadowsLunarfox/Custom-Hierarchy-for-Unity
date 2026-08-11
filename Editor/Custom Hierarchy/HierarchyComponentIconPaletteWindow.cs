@@ -17,7 +17,6 @@ internal sealed class HierarchyComponentIconPaletteWindow : EditorWindow
     private const float ContentMinWidth = 860f;
     private const float ParameterLabelWidth = 46f;
 
-    private bool includeChildren = true;
     private Vector2 windowScroll;
     private Vector2 importedIconScroll;
     private bool displaySettingsExpanded = true;
@@ -50,7 +49,7 @@ internal sealed class HierarchyComponentIconPaletteWindow : EditorWindow
         {
             EditorGUILayout.Space(8f);
             DrawSection(HierarchyComponentIcons.T("DisplaySettings"), ref displaySettingsExpanded, DrawParentLineColorControls);
-            DrawSection(HierarchyComponentIcons.T("SelectedObjectTools"), ref selectedObjectToolsExpanded, DrawObjectLineColorControls);
+            DrawSection(HierarchyComponentIcons.T("SelectedObjectTools"), ref selectedObjectToolsExpanded, DrawSelectedObjectTools);
             DrawSection(HierarchyComponentIcons.T("ImportedIconLibrary"), ref importedIconsExpanded, DrawImportedIconControls);
             DrawSection(HierarchyComponentIcons.T("ChangedObjectManager"), ref changedObjectsExpanded, DrawCustomizedObjectStyleControls);
         }
@@ -85,13 +84,20 @@ internal sealed class HierarchyComponentIconPaletteWindow : EditorWindow
         EditorGUILayout.LabelField(HierarchyComponentIcons.T("HierarchyLinesHelp"), EditorStyles.miniLabel);
 
         EditorGUI.BeginChangeCheck();
+        bool showHierarchyLines = EditorGUILayout.Toggle(HierarchyComponentIcons.T("ShowParentLines"), HierarchyComponentIcons.ShowHierarchyLines);
+        if (EditorGUI.EndChangeCheck())
+        {
+            HierarchyComponentIcons.ShowHierarchyLines = showHierarchyLines;
+        }
+
+        EditorGUI.BeginChangeCheck();
         bool useCustomColor = EditorGUILayout.Toggle(HierarchyComponentIcons.T("UseCustomColor"), HierarchyComponentIcons.UseCustomHierarchyLineColor);
         if (EditorGUI.EndChangeCheck())
         {
             HierarchyComponentIcons.UseCustomHierarchyLineColor = useCustomColor;
         }
 
-        using (new EditorGUI.DisabledScope(!HierarchyComponentIcons.UseCustomHierarchyLineColor))
+        DrawDisabledAwareBlock(HierarchyComponentIcons.UseCustomHierarchyLineColor, () =>
         {
             EditorGUI.BeginChangeCheck();
             Color selectedColor = EditorGUILayout.ColorField(
@@ -112,21 +118,8 @@ internal sealed class HierarchyComponentIconPaletteWindow : EditorWindow
                 HierarchyComponentIcons.HierarchyLineColor = color;
                 HierarchyComponentIcons.UseCustomHierarchyLineColor = true;
             });
-        }
+        });
 
-        EditorGUILayout.Space(8f);
-        using (new EditorGUILayout.HorizontalScope())
-        {
-            if (GUILayout.Button(HierarchyComponentIcons.T("UseSkinDefault")))
-            {
-                HierarchyComponentIcons.UseCustomHierarchyLineColor = false;
-            }
-
-            if (GUILayout.Button(HierarchyComponentIcons.T("ResetColor")))
-            {
-                HierarchyComponentIcons.HierarchyLineColor = HierarchyComponentIcons.DefaultHierarchyLineColor;
-            }
-        }
     }
 
     private static void DrawLanguageControls()
@@ -152,60 +145,118 @@ internal sealed class HierarchyComponentIconPaletteWindow : EditorWindow
             EditorStyles.miniLabel);
     }
 
-    private void DrawObjectLineColorControls()
+    private void DrawSelectedObjectTools()
     {
-        EditorGUILayout.LabelField(HierarchyComponentIcons.T("SelectedObjectLineColor"), EditorStyles.boldLabel);
-        EditorGUILayout.LabelField(HierarchyComponentIcons.T("SelectedObjectLineColorHelp"), EditorStyles.miniLabel);
+        DrawToolSubsection("Alt Menu Defaults", "Controls the color values used when the Alt popup opens for objects without saved colors.", DrawDefaultObjectColorControls);
+    }
+
+    private static void DrawDefaultObjectColorControls()
+    {
+        EditorGUILayout.LabelField("Off: Alt menu uses random colors. On: Alt menu uses these three colors.", EditorStyles.miniLabel);
 
         EditorGUI.BeginChangeCheck();
-        bool showHierarchyLines = EditorGUILayout.Toggle(HierarchyComponentIcons.T("ShowParentLines"), HierarchyComponentIcons.ShowHierarchyLines);
+        bool useCustomDefaults = EditorGUILayout.Toggle("Use Custom Default Colors", HierarchyComponentIcons.UseCustomDefaultObjectColors);
         if (EditorGUI.EndChangeCheck())
         {
-            HierarchyComponentIcons.ShowHierarchyLines = showHierarchyLines;
+            HierarchyComponentIcons.UseCustomDefaultObjectColors = useCustomDefaults;
         }
 
-        EditorGUI.BeginChangeCheck();
-        Color selectedColor = EditorGUILayout.ColorField(
-            new GUIContent(HierarchyComponentIcons.T("Color")),
-            HierarchyComponentIcons.SelectedObjectLineColor,
-            true,
-            true,
-            false);
-
-        if (EditorGUI.EndChangeCheck())
+        DrawDisabledAwareBlock(HierarchyComponentIcons.UseCustomDefaultObjectColors, () =>
         {
-            HierarchyComponentIcons.SelectedObjectLineColor = selectedColor;
+            EditorGUILayout.Space(4f);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                DrawDefaultColorControl(
+                    HierarchyComponentIcons.T("MainColor"),
+                    HierarchyComponentIcons.SelectedObjectRowColor,
+                    color => HierarchyComponentIcons.SelectedObjectRowColor = color);
+
+                DrawDefaultColorControl(
+                    HierarchyComponentIcons.T("NameColor"),
+                    HierarchyComponentIcons.SelectedObjectNameColor,
+                    color => HierarchyComponentIcons.SelectedObjectNameColor = color);
+
+                DrawDefaultColorControl(
+                    HierarchyComponentIcons.T("LineColor"),
+                    HierarchyComponentIcons.SelectedObjectLineColor,
+                    color => HierarchyComponentIcons.SelectedObjectLineColor = color);
+            }
+
+            EditorGUILayout.Space(4f);
+            DrawPresetPalette(color =>
+            {
+                HierarchyComponentIcons.SelectedObjectRowColor = color;
+                HierarchyComponentIcons.SelectedObjectNameColor = color;
+                HierarchyComponentIcons.SelectedObjectLineColor = color;
+            });
+        });
+    }
+
+    private static void DrawDefaultColorControl(string label, Color color, Action<Color> setColor)
+    {
+        using (new EditorGUILayout.VerticalScope(GUI.skin.box, GUILayout.MinWidth(180f)))
+        {
+            EditorGUILayout.LabelField(label, EditorStyles.miniBoldLabel);
+
+            EditorGUI.BeginChangeCheck();
+            Color selectedColor = EditorGUILayout.ColorField(
+                new GUIContent(HierarchyComponentIcons.T("Color")),
+                color,
+                true,
+                true,
+                false);
+
+            if (EditorGUI.EndChangeCheck())
+            {
+                setColor(selectedColor);
+            }
+
+            if (GUILayout.Button(HierarchyComponentIcons.T("Default"), GUILayout.Width(70f)))
+            {
+                setColor(HierarchyComponentIcons.DefaultColor);
+            }
+
+            if (GUILayout.Button("Random", GUILayout.Width(70f)))
+            {
+                setColor(HierarchyComponentIcons.CreateRandomDefaultColor());
+            }
+        }
+    }
+
+    private static void DrawToolSubsection(string title, string helpText, Action drawContent)
+    {
+        using (new EditorGUILayout.VerticalScope(GUI.skin.box))
+        {
+            EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
+            if (!string.IsNullOrEmpty(helpText))
+            {
+                EditorGUILayout.LabelField(helpText, EditorStyles.miniLabel);
+            }
+
+            EditorGUILayout.Space(4f);
+            drawContent();
         }
 
         EditorGUILayout.Space(6f);
-        DrawPresetPalette(color => HierarchyComponentIcons.SelectedObjectLineColor = color);
+    }
 
-        EditorGUILayout.Space(8f);
-        includeChildren = EditorGUILayout.Toggle(HierarchyComponentIcons.T("IncludeChildren"), includeChildren);
-
-        List<GameObject> editableObjects = HierarchyComponentIcons.GetSelectedObjects(includeChildren);
-
-        EditorGUILayout.Space(8f);
-        using (new EditorGUILayout.HorizontalScope())
+    private static void DrawDisabledAwareBlock(bool enabled, Action drawContent)
+    {
+        Rect blockRect = EditorGUILayout.BeginVertical(GUI.skin.box);
+        if (!enabled && Event.current.type == EventType.Repaint)
         {
-            using (new EditorGUI.DisabledScope(editableObjects.Count == 0))
-            {
-                if (GUILayout.Button(HierarchyComponentIcons.T("ApplyToListed")))
-                {
-                    HierarchyComponentIcons.ApplyLineColorToObjects(editableObjects, HierarchyComponentIcons.SelectedObjectLineColor);
-                }
-
-                if (GUILayout.Button(HierarchyComponentIcons.T("ClearListed")))
-                {
-                    HierarchyComponentIcons.ClearLineColorFromObjects(editableObjects);
-                }
-            }
+            Color disabledColor = EditorGUIUtility.isProSkin
+                ? new Color(0f, 0f, 0f, 0.22f)
+                : new Color(0f, 0f, 0f, 0.08f);
+            EditorGUI.DrawRect(blockRect, disabledColor);
         }
 
-        string scopeText = includeChildren
-            ? HierarchyComponentIcons.Format("ScopeWithChildren", editableObjects.Count, Selection.gameObjects.Length)
-            : HierarchyComponentIcons.Format("ScopeSelectedOnly", Selection.gameObjects.Length);
-        EditorGUILayout.LabelField(HierarchyComponentIcons.T("Scope"), scopeText, EditorStyles.miniLabel);
+        using (new EditorGUI.DisabledScope(!enabled))
+        {
+            drawContent();
+        }
+
+        EditorGUILayout.EndVertical();
     }
 
     private void DrawImportedIconControls()
