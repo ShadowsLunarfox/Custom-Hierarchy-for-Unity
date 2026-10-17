@@ -182,9 +182,13 @@ public static partial class HierarchyComponentIcons
         EditorApplication.hierarchyWindowItemOnGUI += OnHierarchyWindowItemGUI;
         EditorApplication.delayCall += ClearUnityObjectIconsForStoredHierarchyIcons;
         EditorApplication.projectChanged += InvalidateLanguageCache;
+        EditorApplication.hierarchyChanged += InvalidateHierarchyObjectIds;
+        EditorApplication.playModeStateChanged += InvalidateHierarchyObjectIdsOnPlayModeChanged;
+        Selection.selectionChanged += EditorApplication.RepaintHierarchyWindow;
         EditorApplication.quitting += SaveProjectSettingsIfDirty;
         AssemblyReloadEvents.beforeAssemblyReload += SaveProjectSettingsIfDirty;
         UnityEditor.SceneManagement.EditorSceneManager.sceneClosing += SaveProjectSettingsOnSceneClosing;
+        UnityEditor.SceneManagement.EditorSceneManager.sceneSaved += InvalidateHierarchyObjectIdsOnSceneSaved;
     }
 
     private static bool Enabled

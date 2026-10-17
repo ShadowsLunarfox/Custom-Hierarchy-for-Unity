@@ -1,6 +1,7 @@
 ﻿#if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
@@ -10,6 +11,74 @@ using UnityEngine;
 // It also owns the geometry helpers used to position labels, icons, and connector lines.
 public static partial class HierarchyComponentIcons
 {
+    private struct CachedHierarchyObjectId
+    {
+        internal GameObject GameObject;
+        internal string GlobalId;
+    }
+
+    private static readonly Dictionary<int, CachedHierarchyObjectId> HierarchyObjectIds = new Dictionary<int, CachedHierarchyObjectId>();
+
+    // Unity previews a new selection on mouse-down, before Selection changes on mouse-up.
+    // Read the drawing window's own tree so custom colors follow that same preview,
+    // including Ctrl/Shift selection and dragging, without changing Unity's selection.
+    private static class HierarchySelectionBridge
+    {
+        private const BindingFlags InstanceMembers = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        private static readonly Assembly EditorAssembly = typeof(EditorWindow).Assembly;
+        private static readonly Type HostViewType = EditorAssembly.GetType("UnityEditor.HostView");
+        private static readonly Type HierarchyWindowType = EditorAssembly.GetType("UnityEditor.SceneHierarchyWindow");
+        private static readonly PropertyInfo CurrentView = EditorAssembly.GetType("UnityEditor.GUIView")
+            ?.GetProperty("current", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+        private static readonly PropertyInfo ActualWindow = HostViewType?.GetProperty("actualView", InstanceMembers);
+        private static readonly PropertyInfo SceneHierarchy = HierarchyWindowType?.GetProperty("sceneHierarchy", InstanceMembers);
+        private static readonly FieldInfo TreeView = SceneHierarchy?.PropertyType.GetField("m_TreeView", InstanceMembers);
+        private static readonly MethodInfo IsItemSelected = TreeView?.FieldType.GetMethod(
+            "IsItemDragSelectedOrSelected", InstanceMembers, null,
+            new[] { typeof(UnityEditor.IMGUI.Controls.TreeViewItem) }, null);
+        private static readonly UnityEditor.IMGUI.Controls.TreeViewItem SelectionProbe = new UnityEditor.IMGUI.Controls.TreeViewItem();
+        private static readonly object[] SelectionArguments = { SelectionProbe };
+        private static bool unavailable;
+
+        internal static bool IsSelected(GameObject gameObject)
+        {
+            if (!unavailable && IsItemSelected != null)
+            {
+                try
+                {
+                    object view = CurrentView?.GetValue(null);
+                    object window = view != null && HostViewType.IsInstanceOfType(view)
+                        ? ActualWindow?.GetValue(view)
+                        : null;
+                    object hierarchy = window != null && HierarchyWindowType.IsInstanceOfType(window)
+                        ? SceneHierarchy.GetValue(window)
+                        : null;
+                    object tree = hierarchy != null ? TreeView.GetValue(hierarchy) : null;
+                    if (tree != null)
+                    {
+                        SelectionProbe.id = gameObject.GetInstanceID();
+                        return (bool)IsItemSelected.Invoke(tree, SelectionArguments);
+                    }
+                }
+                catch (Exception exception) when (exception is TargetInvocationException
+                    || exception is MemberAccessException || exception is ArgumentException)
+                {
+                    // Older/newer Unity versions can change these internal editor APIs.
+                    unavailable = true;
+                }
+            }
+
+            return Selection.Contains(gameObject);
+        }
+    }
+
+    private struct HierarchyRowDrawState
+    {
+        internal bool IsSelected;
+        internal bool IsHovered;
+        internal Color BackgroundColor;
+    }
+
     private static void OnHierarchyWindowItemGUI(int instanceId, Rect selectionRect)
     {
         if (!Enabled || !ShouldHandleHierarchyEvent(Event.current.type))
@@ -28,20 +97,23 @@ public static partial class HierarchyComponentIcons
             return;
         }
 
-        if (ShowObjectRowColors && Event.current.type == EventType.Repaint)
+        bool isRepaint = Event.current.type == EventType.Repaint;
+        if (isRepaint)
         {
-            DrawObjectRowColor(selectionRect, gameObject);
-        }
+            HierarchyRowDrawState rowState = GetHierarchyRowDrawState(selectionRect, gameObject);
 
-        if (ShowHierarchyLines && Event.current.type == EventType.Repaint)
-        {
-            DrawHierarchyConnectionLines(selectionRect, gameObject.transform);
-        }
+            if (ShowObjectRowColors)
+            {
+                DrawObjectRowColor(selectionRect, gameObject, rowState);
+            }
 
-        if (Event.current.type == EventType.Repaint)
-        {
-            DrawObjectIcon(selectionRect, gameObject);
-            DrawObjectNameColor(selectionRect, gameObject);
+            if (ShowHierarchyLines)
+            {
+                DrawHierarchyConnectionLines(selectionRect, gameObject.transform);
+            }
+
+            DrawObjectIcon(selectionRect, gameObject, rowState);
+            DrawObjectNameColor(selectionRect, gameObject, rowState);
         }
 
         Component[] components = gameObject.GetComponents<Component>();
@@ -125,8 +197,13 @@ public static partial class HierarchyComponentIcons
         }
     }
 
-    private static void DrawObjectRowColor(Rect rowRect, GameObject gameObject)
+    private static void DrawObjectRowColor(Rect rowRect, GameObject gameObject, HierarchyRowDrawState rowState)
     {
+        if (rowState.IsSelected)
+        {
+            return;
+        }
+
         if (!TryGetObjectRowColor(gameObject, out Color color))
         {
             return;
@@ -140,7 +217,7 @@ public static partial class HierarchyComponentIcons
         EditorGUI.DrawRect(stripeRect, color);
     }
 
-    private static void DrawObjectIcon(Rect rowRect, GameObject gameObject)
+    private static void DrawObjectIcon(Rect rowRect, GameObject gameObject, HierarchyRowDrawState rowState)
     {
         if (!TryGetObjectIconName(gameObject, out string iconName))
         {
@@ -154,7 +231,7 @@ public static partial class HierarchyComponentIcons
         }
 
         Rect iconBackgroundRect = new Rect(rowRect.xMin, rowRect.yMin, BuiltInObjectIconWidth, rowRect.height);
-        DrawNameLabelBackground(iconBackgroundRect, rowRect, gameObject);
+        DrawNameLabelBackground(iconBackgroundRect, gameObject, rowState);
 
         Rect iconRect = new Rect(
             rowRect.xMin,
@@ -164,7 +241,7 @@ public static partial class HierarchyComponentIcons
         GUI.DrawTexture(iconRect, icon, ScaleMode.ScaleToFit, true);
     }
 
-    private static void DrawObjectNameColor(Rect rowRect, GameObject gameObject)
+    private static void DrawObjectNameColor(Rect rowRect, GameObject gameObject, HierarchyRowDrawState rowState)
     {
         if (!TryGetObjectNameColor(gameObject, out Color color))
         {
@@ -180,7 +257,7 @@ public static partial class HierarchyComponentIcons
         };
 
         Rect labelRect = GetNameLabelRect(rowRect, labelStyle, gameObject.name);
-        DrawNameLabelBackground(labelRect, rowRect, gameObject);
+        DrawNameLabelBackground(labelRect, gameObject, rowState);
         EditorGUI.LabelField(labelRect, gameObject.name, labelStyle);
     }
 
@@ -193,27 +270,41 @@ public static partial class HierarchyComponentIcons
         return new Rect(x, rowRect.yMin, width, rowRect.height);
     }
 
-    private static void DrawNameLabelBackground(Rect labelRect, Rect rowRect, GameObject gameObject)
+    private static void DrawNameLabelBackground(Rect labelRect, GameObject gameObject, HierarchyRowDrawState rowState)
     {
-        EditorGUI.DrawRect(labelRect, GetHierarchyBackgroundColor(rowRect, gameObject));
+        EditorGUI.DrawRect(labelRect, rowState.BackgroundColor);
 
-        if (ShowObjectRowColors && TryGetObjectRowColor(gameObject, out Color rowColor))
+        if (!rowState.IsSelected
+            && ShowObjectRowColors
+            && TryGetObjectRowColor(gameObject, out Color rowColor))
         {
             Color overlayColor = new Color(rowColor.r, rowColor.g, rowColor.b, Mathf.Min(rowColor.a, RowColorOverlayAlpha));
             EditorGUI.DrawRect(labelRect, overlayColor);
         }
     }
 
-    private static Color GetHierarchyBackgroundColor(Rect rowRect, GameObject gameObject)
+    private static HierarchyRowDrawState GetHierarchyRowDrawState(Rect rowRect, GameObject gameObject)
     {
-        if (Selection.Contains(gameObject))
+        HierarchyRowDrawState rowState = new HierarchyRowDrawState
+        {
+            IsSelected = gameObject != null && HierarchySelectionBridge.IsSelected(gameObject),
+            IsHovered = Event.current != null && rowRect.Contains(Event.current.mousePosition)
+        };
+
+        rowState.BackgroundColor = GetHierarchyBackgroundColor(rowState);
+        return rowState;
+    }
+
+    private static Color GetHierarchyBackgroundColor(HierarchyRowDrawState rowState)
+    {
+        if (rowState.IsSelected)
         {
             return EditorGUIUtility.isProSkin
                 ? new Color(0.17f, 0.36f, 0.53f, 1f)
                 : new Color(0.24f, 0.48f, 0.90f, 1f);
         }
 
-        if (Event.current != null && rowRect.Contains(Event.current.mousePosition))
+        if (rowState.IsHovered)
         {
             return EditorGUIUtility.isProSkin
                 ? new Color(0.27f, 0.27f, 0.27f, 1f)
@@ -280,50 +371,64 @@ public static partial class HierarchyComponentIcons
 
     private static string GetObjectRowColorKey(GameObject gameObject)
     {
-        if (gameObject == null)
-        {
-            return string.Empty;
-        }
-
-        GlobalObjectId globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(gameObject);
-        string globalId = globalObjectId.ToString();
+        string globalId = GetCachedHierarchyObjectId(gameObject);
         return string.IsNullOrEmpty(globalId) ? string.Empty : ObjectRowColorKeyPrefix + globalId;
     }
 
     private static string GetObjectLineColorKey(GameObject gameObject)
     {
-        if (gameObject == null)
-        {
-            return string.Empty;
-        }
-
-        GlobalObjectId globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(gameObject);
-        string globalId = globalObjectId.ToString();
+        string globalId = GetCachedHierarchyObjectId(gameObject);
         return string.IsNullOrEmpty(globalId) ? string.Empty : ObjectLineColorKeyPrefix + globalId;
     }
 
     private static string GetObjectNameColorKey(GameObject gameObject)
     {
-        if (gameObject == null)
-        {
-            return string.Empty;
-        }
-
-        GlobalObjectId globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(gameObject);
-        string globalId = globalObjectId.ToString();
+        string globalId = GetCachedHierarchyObjectId(gameObject);
         return string.IsNullOrEmpty(globalId) ? string.Empty : ObjectNameColorKeyPrefix + globalId;
     }
 
     private static string GetObjectIconNameKey(GameObject gameObject)
+    {
+        string globalId = GetCachedHierarchyObjectId(gameObject);
+        return string.IsNullOrEmpty(globalId) ? string.Empty : ObjectIconNameKeyPrefix + globalId;
+    }
+
+    private static string GetCachedHierarchyObjectId(GameObject gameObject)
     {
         if (gameObject == null)
         {
             return string.Empty;
         }
 
-        GlobalObjectId globalObjectId = GlobalObjectId.GetGlobalObjectIdSlow(gameObject);
-        string globalId = globalObjectId.ToString();
-        return string.IsNullOrEmpty(globalId) ? string.Empty : ObjectIconNameKeyPrefix + globalId;
+        int instanceId = gameObject.GetInstanceID();
+        if (HierarchyObjectIds.TryGetValue(instanceId, out CachedHierarchyObjectId cached)
+            && ReferenceEquals(cached.GameObject, gameObject))
+        {
+            return cached.GlobalId;
+        }
+
+        string globalId = GlobalObjectId.GetGlobalObjectIdSlow(gameObject).ToString();
+        HierarchyObjectIds[instanceId] = new CachedHierarchyObjectId
+        {
+            GameObject = gameObject,
+            GlobalId = globalId
+        };
+        return globalId;
+    }
+
+    private static void InvalidateHierarchyObjectIds()
+    {
+        HierarchyObjectIds.Clear();
+    }
+
+    private static void InvalidateHierarchyObjectIdsOnSceneSaved(UnityEngine.SceneManagement.Scene scene)
+    {
+        InvalidateHierarchyObjectIds();
+    }
+
+    private static void InvalidateHierarchyObjectIdsOnPlayModeChanged(PlayModeStateChange state)
+    {
+        InvalidateHierarchyObjectIds();
     }
 
     private static void DrawLine(float startX, float startY, float endX, float endY, Color color)
@@ -360,7 +465,9 @@ public static partial class HierarchyComponentIcons
 
         IconContent.image = icon;
         string componentName = componentType != null ? ObjectNames.NicifyVariableName(componentType.Name) : "Missing script";
-        IconContent.tooltip = componentName + " (Ctrl/Cmd-click to select component)";
+        IconContent.tooltip = CanToggleComponent(component)
+            ? componentName + " (Click to enable/disable, Ctrl/Cmd-click to select component)"
+            : componentName + " (Ctrl/Cmd-click to select component)";
 
         bool wasEnabled = GUI.enabled;
         Color previousColor = GUI.color;
@@ -373,14 +480,24 @@ public static partial class HierarchyComponentIcons
         GUI.enabled = wasEnabled;
 
         Event currentEvent = Event.current;
-        if (component != null
-            && currentEvent.type == EventType.MouseDown
-            && currentEvent.button == 0
-            && (currentEvent.control || currentEvent.command)
-            && iconRect.Contains(currentEvent.mousePosition))
+        if (component == null
+            || currentEvent.type != EventType.MouseDown
+            || currentEvent.button != 0
+            || !iconRect.Contains(currentEvent.mousePosition))
+        {
+            return;
+        }
+
+        if (currentEvent.control || currentEvent.command)
         {
             Selection.activeObject = component;
             EditorGUIUtility.PingObject(component);
+            currentEvent.Use();
+            return;
+        }
+
+        if (TryToggleComponentEnabled(component))
+        {
             currentEvent.Use();
         }
     }
@@ -411,6 +528,45 @@ public static partial class HierarchyComponentIcons
         if (component is Behaviour behaviour)
         {
             return !behaviour.enabled;
+        }
+
+        return false;
+    }
+
+    private static bool CanToggleComponent(Component component)
+    {
+        return component is Behaviour
+            || component is Renderer
+            || component is Collider;
+    }
+
+    private static bool TryToggleComponentEnabled(Component component)
+    {
+        if (component is Behaviour behaviour)
+        {
+            Undo.RecordObject(behaviour, "Toggle Hierarchy Component");
+            behaviour.enabled = !behaviour.enabled;
+            EditorUtility.SetDirty(behaviour);
+            EditorApplication.RepaintHierarchyWindow();
+            return true;
+        }
+
+        if (component is Renderer renderer)
+        {
+            Undo.RecordObject(renderer, "Toggle Hierarchy Component");
+            renderer.enabled = !renderer.enabled;
+            EditorUtility.SetDirty(renderer);
+            EditorApplication.RepaintHierarchyWindow();
+            return true;
+        }
+
+        if (component is Collider collider)
+        {
+            Undo.RecordObject(collider, "Toggle Hierarchy Component");
+            collider.enabled = !collider.enabled;
+            EditorUtility.SetDirty(collider);
+            EditorApplication.RepaintHierarchyWindow();
+            return true;
         }
 
         return false;
